@@ -22,7 +22,7 @@ mixpanelClient := mixpanel.Init(<MIXPANEL_API_TOKEN>)
 Track an event:
 
 ```go
-eventParams := EventProperties{
+eventParams := mixpanel.EventProperties{
   "run_id": "123456789"
 }
 
