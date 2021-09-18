@@ -1,4 +1,3 @@
-// Fork of https://github.com/dukex/mixpanel
 package mixpanel
 
 import (
@@ -7,9 +6,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-
-	"github.com/stryd/mixpanel-go/events"
+	"time"
 )
+
+var IgnoreTime = &time.Time{}
 
 type MixpanelError struct {
 	URL string
@@ -29,46 +29,62 @@ type ErrTrackFailed struct {
 	Resp *http.Response
 }
 
-// The Mixpanel struct stores the mixpanel endpoint and the project token
+func (err *ErrTrackFailed) Error() string {
+	return fmt.Sprintf("Mixpanel did not return 1 when tracking: %s", err.Body)
+}
+
+// Mixpanel struct store the mixpanel endpoint and the project token
+type Mixpanel interface {
+	// Track Create a mixpanel event
+	Track(distinctId string, eventName string, e *Event) error
+
+	// Update Set properties for a mixpanel user.
+	Update(distinctId string, u *Update) error
+
+	Alias(distinctId, newId string) error
+}
+
+// Mixpanel struct store the mixpanel endpoint and the project token
 type mixpanel struct {
 	Client *http.Client
 	Token  string
 	ApiURL string
 }
 
-type EventProperties map[string]interface{}
+// Event A mixpanel event
+type Event struct {
+	// IP-address of the user. Leave empty to use autodetect, or set to "0" to
+	// not specify an ip-address.
+	IP string
 
-// An update of a user in mixpanel
+	// Timestamp. Set to nil to use the current time.
+	Timestamp *time.Time
+
+	// Custom properties. At least one must be specified.
+	Properties map[string]interface{}
+}
+
+// Update An update of a user in mixpanel
 type Update struct {
+	// IP-address of the user. Leave empty to use autodetect, or set to "0" to
+	// not specify an ip-address at all.
+	IP string
+
+	// Timestamp. Set to nil to use the current time, or IgnoreTime to not use a
+	// timestamp.
+	Timestamp *time.Time
+
 	// Update operation such as "$set", "$update" etc.
 	Operation string
 
 	// Custom properties. At least one must be specified.
-	Properties EventProperties
+	Properties map[string]interface{}
 }
 
-func (err *ErrTrackFailed) Error() string {
-	return fmt.Sprintf("Mixpanel did not return 1 when tracking: %s", err.Body)
-}
-
-type Mixpanel interface {
-	// Create a mixpanel event
-	Track(userId string, eventName events.EventName, props *EventProperties) error
-
-	// Set properties for a mixpanel user.
-	Update(userId string, u *Update) error
-
-	Alias(userId string, newId string) error
-}
-
-// When alias is called, Mixpanel will create a mapping between the Mixpanel generated distinct_id, and your unique identifier.
-// Only call Alias once; an alias can only point to one Mixpanel distinct_id.
-// Subsequently, when identify is called, you pass your identifier and Mixpanel will connect it with the original distinct_id.
-// see https://help.mixpanel.com/hc/en-us/articles/115004497803-Identity-Management-Best-Practices for more on identity management best practices
-func (m *mixpanel) Alias(userId, newId string) error {
+func (m *mixpanel) Alias(distinctId, newId string) error {
 	props := map[string]interface{}{
 		"token":       m.Token,
-		"distinct_id": userId,
+		"distinct_id": distinctId,
 		"alias":       newId,
 	}
 
@@ -80,38 +96,53 @@ func (m *mixpanel) Alias(userId, newId string) error {
 	return m.send("track", params, false)
 }
 
-// Track sends an event to mixpanel tied to a specific user ID
-func (m *mixpanel) Track(userId string, eventName events.EventName, props *EventProperties) error {
-	eventInfo := map[string]interface{}{
+// Track create an event to current distinct id
+func (m *mixpanel) Track(distinctId string, eventName string, e *Event) error {
+	props := map[string]interface{}{
 		"token":       m.Token,
-		"distinct_id": userId,
+		"distinct_id": distinctId,
+	}
+	if e.IP != "" {
+		props["ip"] = e.IP
+	}
+	if e.Timestamp != nil {
+		props["time"] = e.Timestamp.Unix()
 	}
 
-	for key, value := range *props {
-		eventInfo[key] = value
+	for key, value := range e.Properties {
+		props[key] = value
 	}
 
 	params := map[string]interface{}{
 		"event":      eventName,
-		"properties": eventInfo,
+		"properties": props,
 	}
 
-	autoGeolocate := true
+	autoGeolocate := e.IP == ""
 
 	return m.send("track", params, autoGeolocate)
 }
 
-// Updates a user in mixpanel. See
+// Update a user in mixpanel. See
 // https://mixpanel.com/help/reference/http#people-analytics-updates
-func (m *mixpanel) Update(userId string, u *Update) error {
+func (m *mixpanel) Update(distinctId string, u *Update) error {
 	params := map[string]interface{}{
 		"$token":       m.Token,
-		"$distinct_id": userId,
+		"$distinct_id": distinctId,
+	}
+
+	if u.IP != "" {
+		params["$ip"] = u.IP
+	}
+	if u.Timestamp == IgnoreTime {
+		params["$ignore_time"] = true
+	} else if u.Timestamp != nil {
+		params["$time"] = u.Timestamp.Unix()
 	}
 
 	params[u.Operation] = u.Properties
 
-	autoGeolocate := true
+	autoGeolocate := u.IP == ""
 
 	return m.send("engage", params, autoGeolocate)
 }
@@ -158,16 +189,22 @@ func (m *mixpanel) send(eventType string, params interface{}, autoGeolocate bool
 	return nil
 }
 
-// Init returns the client instance.
-func Init(token string) Mixpanel {
-	return NewFromClient(http.DefaultClient, token)
+// New returns the client instance. If apiURL is blank, the default will be used
+// ("https://api.mixpanel.com").
+func New(token, apiURL string) Mixpanel {
+	return NewFromClient(http.DefaultClient, token, apiURL)
 }
 
-// Creates a client instance using the specified client instance.
-func NewFromClient(c *http.Client, token string) Mixpanel {
+// NewFromClient Creates a client instance using the specified client instance. This is useful
+// when using a proxy.
+func NewFromClient(c *http.Client, token, apiURL string) Mixpanel {
+	if apiURL == "" {
+		apiURL = "https://api.mixpanel.com"
+	}
+
 	return &mixpanel{
 		Client: c,
 		Token:  token,
-		ApiURL: "https://api.mixpanel.com",
+		ApiURL: apiURL,
 	}
 }

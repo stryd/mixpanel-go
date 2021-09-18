@@ -1,6 +1,6 @@
 # mixpanel-go
 
-Mixpanel Go Client and Stryd Mixpanel event names
+Mixpanel Go Client
 
 ## Usage
 
@@ -13,18 +13,20 @@ import (
 
 ## Examples
 
-Initialize the tracking client:
+Initialize the client:
 
 ```go
-mixpanelClient := mixpanel.Init(<MIXPANEL_API_TOKEN>)
+mixpanelClient := mixpanel.New("api-token", "")
 ```
 
 Track an event:
 
 ```go
-eventParams := mixpanel.EventProperties{
-  "run_id": "123456789"
+event := mixpanel.Event{
+	Properties: map[string]interface{}{
+        "run_id": "123456789",
+    }
 }
 
-err := mixpanelClient.Track(<USER_ID>, events.EventNames.SomeEventName, &eventParams)
+err := mixpanelClient.Track("distinct-id", "your-event", &event)
 ```
