@@ -121,6 +121,9 @@ func encodeToWireFormat(e Event, token string) map[string]interface{} {
 	if e.Time != nil {
 		props["time"] = e.Time.Unix()
 	}
+	if len(e.InsertID) > 0 {
+		props["$insert_id"] = e.InsertID
+	}
 
 	for key, value := range e.CustomProperties {
 		props[key] = value
