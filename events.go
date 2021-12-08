@@ -2,6 +2,7 @@ package mixpanel
 
 import (
 	"bytes"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -32,17 +33,20 @@ type (
 		// IPV4Address of the user when they created the event. Only provide one of IPV4Address or Location.
 		IPV4Address *string
 		// Location is an optional field to specify where this event occurred. Only provide one of IPV4Address or Location.
-		Location *struct {
-			City    string
-			Region  string
-			Country string
-		}
+		Location *EventLocation
 
 		// Time the event occurred. Set to nil to use the current time.
 		Time *time.Time
 
 		// CustomProperties that wished to be tracked as fields of the event
 		CustomProperties map[string]interface{}
+	}
+	EventLocation struct {
+		City string
+		// Region usually refers to the state. Can be any string?
+		Region string
+		// Country upper case 2 character ISO country code
+		Country string
 	}
 )
 
@@ -53,25 +57,7 @@ type eventsClient struct {
 
 // Track create an event to current distinct id
 func (ec *eventsClient) Track(e Event) error {
-	props := map[string]interface{}{
-		"token":       ec.c.config.Token,
-		"distinct_id": e.DistinctID,
-	}
-	if e.IPV4Address != nil {
-		props["ip"] = e.IPV4Address
-	}
-	if e.Time != nil {
-		props["time"] = e.Time.Unix()
-	}
-
-	for key, value := range e.CustomProperties {
-		props[key] = value
-	}
-
-	params := map[string]interface{}{
-		"event":      e.Name,
-		"properties": props,
-	}
+	params := encodeToWireFormat(e, ec.c.config.Token)
 	dataBytes, err := json.Marshal(params)
 	if err != nil {
 		return err
@@ -91,23 +77,13 @@ func (ec *eventsClient) Track(e Event) error {
 func (ec *eventsClient) Import(events []Event) error {
 	payloadEvents := make([]map[string]interface{}, len(events))
 	for i, e := range events {
-		props := map[string]interface{}{
-			"distinct_id": e.DistinctID,
+		if len(e.InsertID) == 0 {
+			// import endpoint requires insert ids to be included
+			f := md5.New()
+			_, _ = f.Write([]byte(fmt.Sprintf("%v", e)))
+			e.InsertID = fmt.Sprintf("%x", f.Sum(nil))
 		}
-		if e.IPV4Address != nil {
-			props["ip"] = e.IPV4Address
-		}
-		if e.Time != nil {
-			props["time"] = e.Time.Unix()
-		}
-		for key, value := range e.CustomProperties {
-			props[key] = value
-		}
-
-		payloadEvents[i] = map[string]interface{}{
-			"event":      e.Name,
-			"properties": props,
-		}
+		payloadEvents[i] = encodeToWireFormat(e, "")
 	}
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(payloadEvents); err != nil {
@@ -119,4 +95,40 @@ func (ec *eventsClient) Import(events []Event) error {
 	req.Header.Add(Headers.ContentType, MimeTypes.ApplicationJSON)
 
 	return ec.c.send(req)
+}
+
+func encodeToWireFormat(e Event, token string) map[string]interface{} {
+	props := map[string]interface{}{
+		"distinct_id": e.DistinctID,
+	}
+	if len(token) > 0 {
+		props["token"] = token
+	}
+	if e.IPV4Address != nil {
+		props["ip"] = e.IPV4Address
+	}
+	if e.Location != nil {
+		if len(e.Location.City) > 0 {
+			props["$city"] = e.Location.City
+		}
+		if len(e.Location.Region) > 0 {
+			props["$region"] = e.Location.Region
+		}
+		if len(e.Location.Country) == 2 {
+			props["mp_country_code"] = strings.ToUpper(e.Location.Country)
+		}
+	}
+	if e.Time != nil {
+		props["time"] = e.Time.Unix()
+	}
+
+	for key, value := range e.CustomProperties {
+		props[key] = value
+	}
+
+	params := map[string]interface{}{
+		"event":      e.Name,
+		"properties": props,
+	}
+	return params
 }

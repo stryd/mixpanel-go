@@ -12,10 +12,14 @@ type (
 		// TODO implement more APIs
 	}
 	Config struct {
-		ApiUrl    string
-		Token     string
-		Secret    string
-		ProjectID string
+		ApiUrl         string
+		Token          string
+		ServiceAccount *ServiceAccount
+		ProjectID      string
+	}
+	ServiceAccount struct {
+		Username string
+		Secret   string
 	}
 )
 
@@ -53,8 +57,8 @@ func NewWithClient(httpClient *http.Client, options ...Option) API {
 }
 
 func (c *internalClient) send(req *http.Request) error {
-	if len(c.config.Secret) > 0 {
-		req.SetBasicAuth(c.config.Secret, "")
+	if c.config.ServiceAccount != nil {
+		req.SetBasicAuth(c.config.ServiceAccount.Username, c.config.ServiceAccount.Secret)
 	}
 
 	resp, err := c.httpClient.Do(req)

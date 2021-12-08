@@ -19,6 +19,7 @@ type testServer struct {
 
 var (
 	token     = "api_token"
+	account   = "service_account"
 	secret    = "service_secret"
 	projectID = "test_project"
 )
@@ -54,7 +55,7 @@ func setup() (*testServer, API) {
 		_, _ = w.Write([]byte("1"))
 	}))
 	ts.server = server
-	return &ts, New(WithToken(token), WithApiUrl(ts.server.URL), WithSecret(secret), WithProjectID(projectID))
+	return &ts, New(WithToken(token), WithApiUrl(ts.server.URL), WithServiceAccount(account, secret), WithProjectID(projectID))
 }
 
 func (server *testServer) decodeEventFromWire(m map[string]interface{}) Event {
@@ -159,7 +160,10 @@ func TestImport(t *testing.T) {
 	if !ok {
 		t.Errorf("auth secret not included")
 	}
-	if !strings.EqualFold(secret, u) || len(p) > 0 {
-		t.Errorf("incorrect auth secret.\n expected %s: actual %s", secret, u)
+	if !strings.EqualFold(account, u) {
+		t.Errorf("incorrect auth account.\n expected %s: actual %s", account, u)
+	}
+	if !strings.EqualFold(secret, p) {
+		t.Errorf("incorrect auth secret.\n expected %s: actual %s", secret, p)
 	}
 }

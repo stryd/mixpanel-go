@@ -29,15 +29,20 @@ func WithToken(value string) Option {
 }
 
 type SecretOption struct {
-	value string
+	serviceAccount ServiceAccount
 }
 
 func (o SecretOption) Apply(c *Config) {
-	c.Secret = o.value
+	c.ServiceAccount = &o.serviceAccount
 }
 
-func WithSecret(value string) Option {
-	return SecretOption{value: value}
+func WithServiceAccount(username, secret string) Option {
+	return SecretOption{
+		serviceAccount: ServiceAccount{
+			Username: username,
+			Secret:   secret,
+		},
+	}
 }
 
 type ProjectIDOption struct {
