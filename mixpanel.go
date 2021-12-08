@@ -1,6 +1,7 @@
 package mixpanel
 
 import (
+	"fmt"
 	"io/ioutil"
 	"net/http"
 )
@@ -67,12 +68,12 @@ func (c *internalClient) send(req *http.Request) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, bodyErr := ioutil.ReadAll(resp.Body)
-	if bodyErr != nil {
-		return bodyErr
+	if resp.StatusCode >= 300 {
+		body, bodyErr := ioutil.ReadAll(resp.Body)
+		if bodyErr != nil {
+			return &APIError{Body: fmt.Sprintf("error reading body: %v", bodyErr), Resp: resp}
+		}
+		return &APIError{Body: string(body), Resp: resp}
 	}
-	if strBody := string(body); strBody != "1" && strBody != "1\n" {
-		return &APIError{Body: strBody, Resp: resp}
-	}
-	return err
+	return nil
 }
