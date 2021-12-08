@@ -11,6 +11,7 @@ import (
   "github.com/stryd/mixpanel-go"
 )
 ```
+
 ## Examples
 
 ### Initializing a new client
@@ -19,22 +20,31 @@ import (
 mixpanelAPI := mixpanel.New(mixpanel.WithToken("api-token"))
 ```
 
-There are multiple options that can be provided in any order
+There are multiple options that can be provided in any order. If multiple are provided the last one will take effect.
+
 ```go
-mixpanel.WithToken("api_token")
+// must be https
 mixpanel.WithApiUrl("https://new-api.mixpanel.com")
-mixpanel.WithSecret("service_account_secret")
-mixpanel.WithProjectID("my-project")
+
+// required for track calls
+mixpanel.WithToken("api_token")
+
+// required for import calls
+mixpanel.WithServiceAccount("service_account_username", "service_account_secret")
+mixpanel.WithProjectID("1234")
 ```
 
 ### Tracking a single event
 
-This is usually used client-side but can be used from servers as well. The event must have occurred with in the last 5 days if a time is provided.
+This is usually used client-side but can be used from servers as well. The event must have occurred with in the last 5
+days if a time is provided.
+
+**Token is required.**
 
 ```go
 event := mixpanel.Event{
-	DistinctID: "1234",
-	Name: "your-event",
+	DistinctID: "1234", // required
+	Name: "your-event", // required
 	Properties: map[string]interface{}{
 		"run_id": "123456789",
 	}
@@ -47,23 +57,25 @@ if err := mixpanelClient.Track(event); err != nil {
 
 ### Importing multiple events
 
-Should only be used server side. Can track up to 2000 events as long as those 2000 events don't exceed the size limit
-of a single import request (2MB uncompressed). Insert IDs will be calculated if not provided for each event.
+Should only be used server side. Can track up to 2000 events as long as those 2000 events don't exceed the size limit of
+a single import request (2MB uncompressed). Insert IDs will be calculated if not provided for each event.
+
+**Service account credentials are required.**
 
 ```go
 now := time.Now()
 
 events := []mixpanel.Event{{
-	DistinctID: "1234",
-	Name: "run-completed",
-	Time: &now,
+	DistinctID: "1234",     // required
+	Name: "run-completed",  // required
+	Time: &now,             // required
 	Properties: map[string]interface{}{
 		"run_id": "123456789",
 	}
 },{
-	DistinctID: "1234", 
-	Name: "run-deleted",
-	Time: &now,
+	DistinctID: "1234",     // required
+	Name: "run-deleted",    // required
+	Time: &now,             // required
 	Properties: map[string]interface{}{
 		"run_id": "123456789",
 	}
